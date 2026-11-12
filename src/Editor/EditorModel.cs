@@ -6,13 +6,22 @@ namespace DiceModders.IslandTools;
 // Pure C#: the island editor's tools and undo history (a port of tools/island-editor.html).
 // The UI (EditorWindow) only translates mouse positions to tiles and calls these methods.
 
-internal enum EditLayer { Ground, Nature, Buildings }
+internal enum EditLayer { Ground, Nature, Buildings, Hills }
 internal enum EditTool { Point, Fill, Line, Rect, Square, Circle, Oval, Spray }
 
 internal sealed class EditorModel
 {
     public static readonly string[] GroundNames = { "Water", "Water rock", "Grass", "Sand", "Inner cliff", "Meteorite", "Pier" };
     public static readonly string[] NatureNames = { "Tree", "Rock", "Scorched earth", "Lava", "Flower", "Fish" };
+
+    /// <summary>The game's hill pieces (InnerCliff.Key: size and kind 0 = MAIN, 1 = EXTENSION); each has its own 3D models.</summary>
+    public static readonly (int W, int H, int Kind, string Name)[] HillShapes =
+    {
+        (3, 3, 0, "Hill 3x3"), (2, 2, 0, "Hill 2x2"), (2, 2, 1, "Slope 2x2"), (1, 2, 1, "Slope 1x2"), (1, 1, 1, "Slope 1x1"),
+    };
+    public int HillShape;
+    /// <summary>Why the last hill click did nothing (null when it worked).</summary>
+    public string HillMessage;
 
     public IslandData Data;
     public BuildingTable Table = BuildingTable.Parse(BuildingTable.DefaultDump);
@@ -43,6 +52,7 @@ internal sealed class EditorModel
     {
         public int[] Ground, Nature;
         public List<IslandBuilding> Buildings;
+        public List<IslandCliff> Cliffs;
     }
 
     public bool HasData => Data != null && Data.SideIsExact && Data.Side > 0;
@@ -74,6 +84,7 @@ internal sealed class EditorModel
     {
         Ground = (int[])Data.Ground.Clone(), Nature = (int[])Data.Nature.Clone(),
         Buildings = Data.Buildings.ConvertAll(b => b.Clone()),
+        Cliffs = Data.Cliffs.ConvertAll(c => c.Clone()),
     };
 
     public void PushUndo()
@@ -83,7 +94,7 @@ internal sealed class EditorModel
         _redo.Clear();
     }
 
-    private void Apply(Snapshot s) { Data.Ground = s.Ground; Data.Nature = s.Nature; Data.Buildings = s.Buildings; Dirty = true; Problems.Clear(); }
+    private void Apply(Snapshot s) { Data.Ground = s.Ground; Data.Nature = s.Nature; Data.Buildings = s.Buildings; Data.Cliffs = s.Cliffs; Dirty = true; Problems.Clear(); }
 
     public void Undo()
     {
@@ -245,6 +256,7 @@ internal sealed class EditorModel
     public void PointerDown(int x, int y)
     {
         if (!HasData || !InBounds(x, y)) return;
+        if (Layer == EditLayer.Hills) { ClickHill(x, y); return; }
         PushUndo();
         Dirty = true;
         _strokeOpen = true;
@@ -272,7 +284,7 @@ internal sealed class EditorModel
     /// <summary>Mouse moved with the left button held.</summary>
     public void PointerDrag(int x, int y)
     {
-        if (!HasData || !InBounds(x, y) || Layer == EditLayer.Buildings) return;
+        if (!HasData || !InBounds(x, y) || Layer == EditLayer.Buildings || Layer == EditLayer.Hills) return;
         if (Tool == EditTool.Point && _strokeOpen) { SetPixel(x, y); return; }
         if (Tool == EditTool.Spray && _strokeOpen) { Spray(x, y); return; }
         if (_dragStart == null) return;
@@ -299,7 +311,143 @@ internal sealed class EditorModel
             int i = HitBuilding(x, y);
             if (i >= 0) { PushUndo(); Data.Buildings.RemoveAt(i); Dirty = true; }
         }
+        else if (Layer == EditLayer.Hills)
+        {
+            int i = HitCliff(x, y);
+            if (i >= 0) { PushUndo(); RemoveCliff(i); }
+        }
         else Brush = LayerArray[Cell(x, y)];
+    }
+
+    // ---- hills (inner cliffs) -------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The tiles of a hill piece: the box between its corner tiles (0,0) and (W-1,H-1) after the piece's rotation and mirroring - the same as the
+    /// game's InnerCliff.Positions. The game draws the 3D hill from the cliff entry; the tiles below it must be ground INNER_CLIFF (4).
+    /// </summary>
+    public IEnumerable<(int X, int Y)> CliffFootprint(int w, int h, int x, int y, int orient, int mirror)
+    {
+        var (c, s) = CosSin(orient);
+        (int X, int Y) T(int dx, int dy) { int nx = dx * c - dy * s, ny = dx * s + dy * c; if (mirror != 0) nx = -nx; return (x + nx, y + ny); }
+        var a = T(0, 0);
+        var b = T(w - 1, h - 1);
+        for (int yy = Math.Min(a.Y, b.Y); yy <= Math.Max(a.Y, b.Y); yy++)
+            for (int xx = Math.Min(a.X, b.X); xx <= Math.Max(a.X, b.X); xx++)
+                yield return (xx, yy);
+    }
+
+    public IEnumerable<(int X, int Y)> CliffFootprint(IslandCliff c) => CliffFootprint(c.W, c.H, c.X, c.Y, c.Orient, c.Mirror);
+
+    /// <summary>The hill piece being placed at (x, y) with the current shape, rotation and mirroring.</summary>
+    public IslandCliff CurrentHill(int x, int y)
+    {
+        var shape = HillShapes[Math.Clamp(HillShape, 0, HillShapes.Length - 1)];
+        return new IslandCliff { Kind = shape.Kind, W = shape.W, H = shape.H, X = x, Y = y, Orient = ((BOrient % 4) + 4) % 4, Mirror = BMirror ? 1 : 0 };
+    }
+
+    public int HitCliff(int x, int y)
+    {
+        for (int i = 0; i < Data.Cliffs.Count; i++)
+            foreach (var (fx, fy) in CliffFootprint(Data.Cliffs[i]))
+                if (fx == x && fy == y) return i;
+        return -1;
+    }
+
+    /// <summary>A click with the Hills layer: removes the hill piece under the pointer, or places the current one when all its tiles are free land.</summary>
+    private void ClickHill(int x, int y)
+    {
+        HillMessage = null;
+        int hit = HitCliff(x, y);
+        if (hit >= 0) { PushUndo(); RemoveCliff(hit); return; }
+
+        var hill = CurrentHill(x, y);
+        foreach (var (fx, fy) in CliffFootprint(hill))
+        {
+            if (!InBounds(fx, fy)) { HillMessage = "The hill does not fit on the island there."; return; }
+            int g = Data.Ground[Cell(fx, fy)];
+            if (g == 0 || g == 1 || g == 6) { HillMessage = $"Hills need land: tile {fx},{fy} is {GroundNames[g].ToLowerInvariant()}."; return; }
+            if (HitBuilding(fx, fy) >= 0) { HillMessage = $"A building stands on tile {fx},{fy}."; return; }
+        }
+        PushUndo();
+        Data.Cliffs.Add(hill);
+        foreach (var (fx, fy) in CliffFootprint(hill))
+        {
+            Data.Ground[Cell(fx, fy)] = 4;     // INNER_CLIFF: blocks building like the game's own hills
+            Data.Nature[Cell(fx, fy)] = -1;
+        }
+        Dirty = true;
+    }
+
+    /// <summary>
+    /// Covers every hill tile without a piece (ground INNER_CLIFF painted with the brush: an invisible hill) with the game's pieces, the way the
+    /// game builds its own hills: a big 3x3 where it fits, then 2x2, then 1x2 either way, single tiles last. Returns the number of pieces added.
+    /// </summary>
+    public int MakeHillsVisible()
+    {
+        if (!HasData) return 0;
+        int side = Side;
+        var open = new bool[side * side];
+        int count = 0;
+        for (int i = 0; i < open.Length; i++) open[i] = Data.Ground[i] == 4;
+        foreach (var c in Data.Cliffs)
+            foreach (var (fx, fy) in CliffFootprint(c))
+                if (InBounds(fx, fy)) open[Cell(fx, fy)] = false;
+        for (int i = 0; i < open.Length; i++) if (open[i]) count++;
+        if (count == 0) return 0;
+
+        // (shape, orientation); the anchor is moved so the piece's lowest corner lands on the tile being filled
+        var options = new List<(int Shape, int Orient, int Dx, int Dy)>();
+        foreach (var (shape, orient) in new[] { (0, 0), (1, 0), (3, 0), (3, 1), (4, 0) })
+        {
+            var s = HillShapes[shape];
+            int minX = int.MaxValue, minY = int.MaxValue;
+            foreach (var (fx, fy) in CliffFootprint(s.W, s.H, 0, 0, orient, 0)) { minX = Math.Min(minX, fx); minY = Math.Min(minY, fy); }
+            options.Add((shape, orient, -minX, -minY));
+        }
+
+        PushUndo();
+        int added = 0;
+        for (int y = 0; y < side; y++)
+            for (int x = 0; x < side; x++)
+            {
+                if (!open[Cell(x, y)]) continue;
+                foreach (var (shape, orient, dx, dy) in options)
+                {
+                    var s = HillShapes[shape];
+                    var piece = new IslandCliff { Kind = s.Kind, W = s.W, H = s.H, X = x + dx, Y = y + dy, Orient = orient, Mirror = 0 };
+                    bool fits = true;
+                    foreach (var (fx, fy) in CliffFootprint(piece))
+                        if (!InBounds(fx, fy) || !open[Cell(fx, fy)]) { fits = false; break; }
+                    if (!fits) continue;
+                    foreach (var (fx, fy) in CliffFootprint(piece)) { open[Cell(fx, fy)] = false; Data.Nature[Cell(fx, fy)] = -1; }
+                    Data.Cliffs.Add(piece);
+                    added++;
+                    break;
+                }
+            }
+        Dirty = true;
+        return added;
+    }
+
+    /// <summary>Hill tiles (ground INNER_CLIFF) that no piece covers: invisible in the game, but they still block building.</summary>
+    public int InvisibleHillTiles()
+    {
+        if (!HasData) return 0;
+        int n = 0;
+        for (int y = 0; y < Side; y++)
+            for (int x = 0; x < Side; x++)
+                if (Data.Ground[Cell(x, y)] == 4 && HitCliff(x, y) < 0) n++;
+        return n;
+    }
+
+    /// <summary>Removes a hill piece; its tiles become grass again unless another piece still covers them (what the game's RemoveInnerCliff does).</summary>
+    private void RemoveCliff(int index)
+    {
+        var gone = Data.Cliffs[index];
+        Data.Cliffs.RemoveAt(index);
+        foreach (var (fx, fy) in CliffFootprint(gone))
+            if (InBounds(fx, fy) && Data.Ground[Cell(fx, fy)] == 4 && HitCliff(fx, fy) < 0) Data.Ground[Cell(fx, fy)] = 2;
+        Dirty = true;
     }
 
     // ---- buildings --------------------------------------------------------------------------------------------------
@@ -355,6 +503,7 @@ internal sealed class EditorModel
                 if (Data.Nature[Cell(x, y)] != -1) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: nature on tile {x},{y}"); }
                 int g = Data.Ground[Cell(x, y)];
                 if ((g == 0 || g == 1) && b.Type != 6 && b.Type != 21 && b.Type != 22) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: water at {x},{y}"); }
+                if (g == 4) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: on a hill at {x},{y}"); }
                 if (occ.TryGetValue((x, y), out int other) && other != i)
                 { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: overlaps {Table.NameOf(Data.Buildings[other].Type)} at {x},{y}"); }
                 occ[(x, y)] = i;
@@ -388,6 +537,6 @@ internal sealed class EditorModel
         if (!HasData) return "no island loaded";
         int land = 0;
         foreach (int g in Data.Ground) if (g != 0 && g != 1) land++;
-        return $"{Side}x{Side}, {land} land tiles, {Data.Buildings.Count} buildings";
+        return $"{Side}x{Side}, {land} land tiles, {Data.Buildings.Count} buildings, {Data.Cliffs.Count} hill pieces";
     }
 }

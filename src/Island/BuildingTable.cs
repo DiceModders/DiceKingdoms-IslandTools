@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 
 namespace DiceModders.IslandTools;
 
-// Pure C#: building id -> name, tier, HP and footprint, parsed from the F11 dump text
-// ("id: Name | tier=T hp=H | [[dx,dy],...]"). A built-in copy of the current game build is used until a live dump exists.
+// Pure C#: building id -> name, tier, HP and footprint, parsed from text
+// ("id: Name | tier=T hp=H | [[dx,dy],...]"). A built-in copy of the current game build is used until the game has loaded its own (see Buildings).
 
 internal sealed class BuildingInfo
 {

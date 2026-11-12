@@ -1,0 +1,147 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using DiceModders.ModCore;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+
+namespace DiceModders.IslandTools;
+
+using Core = DiceModders.ModCore.ModCore;
+using GameGrid = DiceKingdoms.Game.IslandGrid;
+
+/// <summary>
+/// The players' islands in the running match: reading one as an island code (<c>IslandGrid.ExportIsland</c>) and replacing one with an island
+/// code (<c>IslandGrid.ImportIsland</c>, guarded by <see cref="ImportGuard"/>). Also the "selected player" the editor's second row works on.
+/// </summary>
+internal static class Islands
+{
+    /// <summary>Raised after an island was replaced by this mod (the players window redraws its pictures).</summary>
+    internal static event Action Changed;
+    internal static event Action SelectionChanged;
+
+    private static IntPtr _selected;   // the selected player's Player object; it lives as long as the match
+
+    internal static IReadOnlyList<MatchPlayer> Players => Core.Players.All;
+    internal static MatchPlayer Local => Core.Players.Local;
+
+    internal static void Install() => Core.Match.Ended += () => { _selected = IntPtr.Zero; SelectionChanged?.Invoke(); };
+
+    internal static bool IsLocal(MatchPlayer p) => p != null && p.IsLocal;
+    internal static bool Same(MatchPlayer a, MatchPlayer b) => a != null && b != null && a.Game.Pointer == b.Game.Pointer;
+
+    internal static MatchPlayer Selected => Players.FirstOrDefault(p => p.Game.Pointer == _selected);
+
+    internal static void Select(MatchPlayer p) { _selected = p?.Game.Pointer ?? IntPtr.Zero; SelectionChanged?.Invoke(); }
+
+    /// <summary>Selects the next player of the match (after the selected one).</summary>
+    internal static void SelectNext()
+    {
+        var all = Players;
+        if (all.Count == 0) return;
+        int at = -1;
+        for (int i = 0; i < all.Count; i++) if (all[i].Game.Pointer == _selected) at = i;
+        Select(all[(at + 1) % all.Count]);
+    }
+
+    internal static GameGrid GridOf(MatchPlayer p)
+    {
+        try { return p?.Island?.grid; }
+        catch (Exception) { return null; }
+    }
+
+    /// <summary>Tiles per side of the player's island grid (49 in a normal match, bigger with the lobby rule), or 0.</summary>
+    internal static int SideOf(MatchPlayer p)
+    {
+        var grid = GridOf(p);
+        try { return grid == null ? 0 : grid.size.x; }
+        catch (Exception) { return 0; }
+    }
+
+    /// <summary>The player's island as island-code bytes (raw DEFLATE of the island stream), or null.</summary>
+    internal static byte[] Export(MatchPlayer p)
+    {
+        var grid = GridOf(p);
+        if (grid == null) return null;
+        try { return grid.ExportIsland()?.ToArray(); }
+        catch (Exception e) { Plugin.L.LogError("[island] export: " + e.Message); return null; }
+    }
+
+    /// <summary>Replaces the player's island with island-code bytes. The message is the result for the window's status line.</summary>
+    internal static bool Import(MatchPlayer p, byte[] code, out string message)
+    {
+        var grid = GridOf(p);
+        if (grid == null) { message = "That player has no island yet (join or start a match first)."; return false; }
+        string fitted = Fit(ref code, SideOf(p));
+        ImportGuard.Begin();
+        try
+        {
+            RemoveHills(grid);
+            grid.ImportIsland(new Il2CppStructArray<byte>(code));
+            message = "Applied to " + p.Name + "'s island" + fitted + ImportGuard.Note() + ".";
+            return true;
+        }
+        catch (Exception e)
+        {
+            string first = (e.Message ?? "").Split('\n')[0].Trim();
+            Plugin.L.LogError("[island] import: " + e.GetType().Name + ": " + first);
+            message = (e.Message ?? "").Contains("CanPlaceBuilding")
+                ? "The game refused a building and stopped halfway, so the island may be half-loaded (see the [import] line in the log). " +
+                  "Fix that building, or switch \"Allow every placement while applying\" on."
+                : "The game rejected the island: " + first;
+            return false;
+        }
+        finally
+        {
+            ImportGuard.End();
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// <c>IslandGrid.RemoveInnerCliff</c> turns every tile under the removed hill into grass. The game removes the old hills while it applies the
+    /// code, after the new ground, so a hill that stood where the new island has water left a grass islet there. Removing them first lets the new
+    /// ground overwrite that grass.
+    /// </summary>
+    private static void RemoveHills(GameGrid grid)
+    {
+        try
+        {
+            var hills = grid.innerCliffs;
+            for (int i = (hills?.Count ?? 0) - 1; i >= 0; i--) grid.RemoveInnerCliff(i);
+        }
+        catch (Exception e) { Plugin.L.LogWarning("[island] removing the old hills: " + e.Message); }
+    }
+
+    /// <summary>
+    /// The game reads an island code into the grid it already has and fails on any other size (IndexOutOfRange). An island of another size is
+    /// put in the middle of the player's grid first. Returns the note for the status line ("" when nothing changed).
+    /// </summary>
+    private static string Fit(ref byte[] code, int side)
+    {
+        if (side <= 0) return "";
+        IslandData data;
+        try { data = IslandCodec.FromCodeBytes(code); }
+        catch (Exception) { return ""; }                    // not readable here: the game gives its own answer
+        if (!data.SideIsExact) return "";
+
+        // a hill piece the game has no model for stops ImportIsland halfway (KeyNotFound in DefaultPrefabs.InnerCliff): leave such pieces out
+        int unknown = data.Cliffs.RemoveAll(c => !KnownHill(c));
+        if (unknown > 0) Plugin.L.LogWarning($"[island] {unknown} hill piece(s) of a kind the game does not have were left out");
+        string note = unknown > 0 ? $" ({unknown} unknown hill piece(s) left out)" : "";
+        if (data.Side == side)
+        {
+            if (unknown > 0) code = IslandCodec.ToCodeBytes(data);
+            return note;
+        }
+        code = IslandCodec.ToCodeBytes(data.Fitted(side, out int dropped));
+        return note + $" (the {data.Side}x{data.Side} island was placed in the middle of the {side}x{side} grid" +
+               (dropped > 0 ? $"; {dropped} building(s)/cliff(s) outside it were left out" : "") + ")";
+    }
+
+    /// <summary>The hill pieces the game has models for (InnerCliff.Key: kind, width, height).</summary>
+    private static bool KnownHill(IslandCliff c)
+    {
+        foreach (var s in EditorModel.HillShapes) if (s.Kind == c.Kind && s.W == c.W && s.H == c.H) return true;
+        return false;
+    }
+}

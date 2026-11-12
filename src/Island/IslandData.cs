@@ -23,8 +23,8 @@ internal sealed class IslandBuilding
 
 internal sealed class IslandCliff
 {
-    // fields are kept in FILE order (the first three form the cliff "key")
-    public int K0, K1, K2, X, Y, Orient, Mirror;
+    // FILE order: the key (kind 0 = MAIN, 1 = EXTENSION; width; height), then the transform
+    public int Kind, W, H, X, Y, Orient, Mirror;
     public IslandCliff Clone() => (IslandCliff)MemberwiseClone();
 }
 
@@ -47,6 +47,40 @@ internal sealed class IslandData
         int n = side * side;
         var d = new IslandData { Ground = new int[n], Nature = new int[n] };
         for (int i = 0; i < n; i++) d.Nature[i] = -1;
+        return d;
+    }
+
+    /// <summary>
+    /// A copy on a grid of another size, with the island in the middle: a bigger grid gets water around it, a smaller one cuts the edges off.
+    /// Buildings, remains and inner cliffs move with the tiles; the ones whose position falls outside are left out (<paramref name="dropped"/>).
+    /// </summary>
+    public IslandData Fitted(int side, out int dropped)
+    {
+        int old = Side, shift = (side - old) / 2;
+        var d = Blank(side);
+        for (int y = 0; y < side; y++)
+            for (int x = 0; x < side; x++)
+            {
+                int ox = x - shift, oy = y - shift;
+                if (ox < 0 || oy < 0 || ox >= old || oy >= old) continue;
+                d.Ground[y * side + x] = Ground[oy * old + ox];
+                d.Nature[y * side + x] = Nature[oy * old + ox];
+            }
+        bool Inside(int x, int y) => x >= 0 && y >= 0 && x < side && y < side;
+        dropped = 0;
+        foreach (var (from, to) in new[] { (Buildings, d.Buildings), (Remains, d.Remains) })
+            foreach (var b in from)
+            {
+                var c = b.Clone();
+                c.X += shift; c.Y += shift;
+                if (Inside(c.X, c.Y)) to.Add(c); else dropped++;
+            }
+        foreach (var cliff in Cliffs)
+        {
+            var c = cliff.Clone();
+            c.X += shift; c.Y += shift;
+            if (Inside(c.X, c.Y)) d.Cliffs.Add(c); else dropped++;
+        }
         return d;
     }
 
@@ -140,7 +174,7 @@ internal sealed class IslandData
         int nc = r.I32();
         if (nc < 0 || nc > 100000) throw new FormatException("bad cliff count " + nc);
         for (int i = 0; i < nc; i++)
-            d.Cliffs.Add(new IslandCliff { K0 = r.I32(), K1 = r.I32(), K2 = r.I32(), X = r.I32(), Y = r.I32(), Orient = r.I32(), Mirror = r.I32() });
+            d.Cliffs.Add(new IslandCliff { Kind = r.I32(), W = r.I32(), H = r.I32(), X = r.I32(), Y = r.I32(), Orient = r.I32(), Mirror = r.I32() });
         d.TrailingBytes = r.Left;
         return d;
     }
@@ -203,7 +237,7 @@ internal sealed class IslandData
         w.I32(Cliffs.Count);
         foreach (var c in Cliffs)
         {
-            w.I32(c.K0); w.I32(c.K1); w.I32(c.K2); w.I32(c.X); w.I32(c.Y); w.I32(c.Orient); w.I32(c.Mirror);
+            w.I32(c.Kind); w.I32(c.W); w.I32(c.H); w.I32(c.X); w.I32(c.Y); w.I32(c.Orient); w.I32(c.Mirror);
         }
         return w.A.ToArray();
     }
