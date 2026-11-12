@@ -24,7 +24,19 @@ internal static class Islands
     internal static IReadOnlyList<MatchPlayer> Players => Core.Players.All;
     internal static MatchPlayer Local => Core.Players.Local;
 
-    internal static void Install() => Core.Match.Ended += () => { _selected = IntPtr.Zero; SelectionChanged?.Invoke(); };
+    internal static void Install()
+    {
+        // Ended is not raised when the match was left before it started (islands still spawning): Reset covers that
+        Core.Match.Ended += ClearSelection;
+        Core.Match.Reset += ClearSelection;
+    }
+
+    private static void ClearSelection()
+    {
+        if (_selected == IntPtr.Zero) return;
+        _selected = IntPtr.Zero;
+        SelectionChanged?.Invoke();
+    }
 
     internal static bool IsLocal(MatchPlayer p) => p != null && p.IsLocal;
     internal static bool Same(MatchPlayer a, MatchPlayer b) => a != null && b != null && a.Game.Pointer == b.Game.Pointer;
@@ -72,6 +84,7 @@ internal static class Islands
         var grid = GridOf(p);
         if (grid == null) { message = "That player has no island yet (join or start a match first)."; return false; }
         string fitted = Fit(ref code, SideOf(p));
+        var backup = Export(p);   // the game changes the island while it reads the code: put this back if it stops halfway
         ImportGuard.Begin();
         try
         {
@@ -84,10 +97,12 @@ internal static class Islands
         {
             string first = (e.Message ?? "").Split('\n')[0].Trim();
             Plugin.L.LogError("[island] import: " + e.GetType().Name + ": " + first);
+            bool restored = Restore(grid, backup);
+            string after = restored ? " The island was put back as it was." : " The island may be half-loaded.";
             message = (e.Message ?? "").Contains("CanPlaceBuilding")
-                ? "The game refused a building and stopped halfway, so the island may be half-loaded (see the [import] line in the log). " +
-                  "Fix that building, or switch \"Allow every placement while applying\" on."
-                : "The game rejected the island: " + first;
+                ? "The game refused a building (see the [import] line in the log)." + after +
+                  " Fix that building, or switch \"Allow every placement while applying\" on."
+                : "The game rejected the island: " + first + "." + after;
             return false;
         }
         finally
@@ -104,12 +119,28 @@ internal static class Islands
     /// </summary>
     private static void RemoveHills(GameGrid grid)
     {
+        int count;
+        try { count = grid.innerCliffs?.Count ?? 0; }
+        catch (Exception e) { Plugin.L.LogWarning("[island] reading the old hills: " + e.Message); return; }
+        for (int i = count - 1; i >= 0; i--)   // from the end: the game removes with swap-back
+        {
+            try { grid.RemoveInnerCliff(i); }
+            catch (Exception e) { Plugin.L.LogWarning("[island] removing old hill " + i + ": " + e.Message); }   // one bad piece must not keep the rest
+        }
+    }
+
+    /// <summary>After a failed import: the island as it was before (its own export). False when there is no backup or that fails too.</summary>
+    private static bool Restore(GameGrid grid, byte[] backup)
+    {
+        if (backup == null || backup.Length == 0) return false;
         try
         {
-            var hills = grid.innerCliffs;
-            for (int i = (hills?.Count ?? 0) - 1; i >= 0; i--) grid.RemoveInnerCliff(i);
+            RemoveHills(grid);
+            grid.ImportIsland(new Il2CppStructArray<byte>(backup));
+            Plugin.L.LogInfo("[island] failed import: the island was put back from its backup");
+            return true;
         }
-        catch (Exception e) { Plugin.L.LogWarning("[island] removing the old hills: " + e.Message); }
+        catch (Exception e) { Plugin.L.LogError("[island] putting the island back failed: " + e.Message); return false; }
     }
 
     /// <summary>

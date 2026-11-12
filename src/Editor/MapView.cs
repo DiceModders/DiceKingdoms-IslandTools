@@ -270,17 +270,25 @@ internal static class MapView
                 Blend(_view, x0, y0, x1, y1, tint, blend);
             }
 
-        try
+        if (!_rawFailed)
         {
-            unsafe { fixed (Color32* p = _view) _tex.LoadRawTextureData((IntPtr)p, _view.Length * 4); }
-            _tex.Apply(false);
+            try
+            {
+                unsafe { fixed (Color32* p = _view) _tex.LoadRawTextureData((IntPtr)p, _view.Length * 4); }
+                _tex.Apply(false);
+                return;
+            }
+            catch (Exception e)
+            {
+                _rawFailed = true;   // decided once: a throwing path every hover move would be slow and silent
+                Plugin.L.LogWarning("[editor] map: raw texture upload not available here (" + e.Message + "), using SetPixels32");
+            }
         }
-        catch
-        {
-            _tex.SetPixels32(new Il2CppStructArray<Color32>(_view));
-            map?.Refresh();
-        }
+        _tex.SetPixels32(new Il2CppStructArray<Color32>(_view));
+        _tex.Apply(false);
+        map?.Refresh();
     }
+    private static bool _rawFailed;
 
     // ---- pixel helpers --------------------------------------------------------------------------------------------------------
 

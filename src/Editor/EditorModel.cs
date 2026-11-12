@@ -187,8 +187,9 @@ internal sealed class EditorModel
         if (ya > yb) (ya, yb) = (yb, ya);
         double cx = (xa + xb) / 2.0, cy = (ya + yb) / 2.0, rx = (xb - xa + 1) / 2.0, ry = (yb - ya + 1) / 2.0;
         bool Inside(int x, int y) => Math.Pow((x - cx) / rx, 2) + Math.Pow((y - cy) / ry, 2) <= 1;
-        for (int y = ya; y <= yb; y++)
-            for (int x = xa; x <= xb; x++)
+        // only the tiles on the grid (a circle dragged far out can be much bigger than the island)
+        for (int y = Math.Max(ya, 0); y <= Math.Min(yb, Side - 1); y++)
+            for (int x = Math.Max(xa, 0); x <= Math.Min(xb, Side - 1); x++)
             {
                 if (!Inside(x, y)) continue;
                 if (FillShapes) { Put(x, y); continue; }
@@ -367,6 +368,8 @@ internal sealed class EditorModel
             int g = Data.Ground[Cell(fx, fy)];
             if (g == 0 || g == 1 || g == 6) { HillMessage = $"Hills need land: tile {fx},{fy} is {GroundNames[g].ToLowerInvariant()}."; return; }
             if (HitBuilding(fx, fy) >= 0) { HillMessage = $"A building stands on tile {fx},{fy}."; return; }
+            // the game checks nothing: two pieces on one tile would stand inside each other
+            if (HitCliff(fx, fy) >= 0) { HillMessage = $"Another hill piece covers tile {fx},{fy}."; return; }
         }
         PushUndo();
         Data.Cliffs.Add(hill);
@@ -386,13 +389,7 @@ internal sealed class EditorModel
     {
         if (!HasData) return 0;
         int side = Side;
-        var open = new bool[side * side];
-        int count = 0;
-        for (int i = 0; i < open.Length; i++) open[i] = Data.Ground[i] == 4;
-        foreach (var c in Data.Cliffs)
-            foreach (var (fx, fy) in CliffFootprint(c))
-                if (InBounds(fx, fy)) open[Cell(fx, fy)] = false;
-        for (int i = 0; i < open.Length; i++) if (open[i]) count++;
+        var open = UncoveredHillTiles(out int count);
         if (count == 0) return 0;
 
         // (shape, orientation); the anchor is moved so the piece's lowest corner lands on the tile being filled
@@ -433,14 +430,27 @@ internal sealed class EditorModel
     public int InvisibleHillTiles()
     {
         if (!HasData) return 0;
-        int n = 0;
-        for (int y = 0; y < Side; y++)
-            for (int x = 0; x < Side; x++)
-                if (Data.Ground[Cell(x, y)] == 4 && HitCliff(x, y) < 0) n++;
+        UncoveredHillTiles(out int n);
         return n;
     }
 
-    /// <summary>Removes a hill piece; its tiles become grass again unless another piece still covers them (what the game's RemoveInnerCliff does).</summary>
+    /// <summary>Per tile: hill ground that no piece covers. One pass over the pieces, then one over the tiles (not every tile against every piece).</summary>
+    private bool[] UncoveredHillTiles(out int count)
+    {
+        var open = new bool[Side * Side];
+        for (int i = 0; i < open.Length; i++) open[i] = Data.Ground[i] == 4;
+        foreach (var c in Data.Cliffs)
+            foreach (var (fx, fy) in CliffFootprint(c))
+                if (InBounds(fx, fy)) open[Cell(fx, fy)] = false;
+        count = 0;
+        for (int i = 0; i < open.Length; i++) if (open[i]) count++;
+        return open;
+    }
+
+    /// <summary>
+    /// Removes a hill piece; its tiles become grass again unless another piece still covers them. (The game's RemoveInnerCliff turns every tile of
+    /// the piece to grass; here a tile another piece still covers stays hill ground, which is what the island should look like.)
+    /// </summary>
     private void RemoveCliff(int index)
     {
         var gone = Data.Cliffs[index];
@@ -509,6 +519,24 @@ internal sealed class EditorModel
                 occ[(x, y)] = i;
             }
         }
+        // hill pieces: the game draws them wherever they are, so these show up as hills on water, on grass, or inside each other
+        var hillAt = new Dictionary<(int, int), int>();
+        for (int i = 0; i < Data.Cliffs.Count; i++)
+        {
+            var c = Data.Cliffs[i];
+            string nm = $"Hill {c.W}x{c.H}";
+            foreach (var (x, y) in CliffFootprint(c))
+            {
+                if (!InBounds(x, y)) { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: outside the island"); continue; }
+                int hg = Data.Ground[Cell(x, y)];
+                if (hg != 4) { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: tile {x},{y} is " + (hg >= 0 && hg < GroundNames.Length ? GroundNames[hg].ToLowerInvariant() : "ground " + hg) + ", not hill ground"); }
+                if (hillAt.TryGetValue((x, y), out int other) && other != i)
+                { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: overlaps another hill piece at {x},{y}"); }
+                hillAt[(x, y)] = i;
+            }
+        }
+        int invisible = InvisibleHillTiles();
+        if (invisible > 0) msgs.Add($"{invisible} hill tile(s) have no hill model: they look like plain ground in the game but block building (\"Make painted hills visible\" fixes that)");
         return msgs;
     }
 

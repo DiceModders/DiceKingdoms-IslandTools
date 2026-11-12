@@ -573,7 +573,7 @@ internal static class EditorWindow
     {
         var msgs = M.Check();
         _checkLines.Clear();
-        if (msgs.Count == 0) _checkLines.Add("No problems found (bounds / water / nature / overlap).");
+        if (msgs.Count == 0) _checkLines.Add("No problems found (bounds / water / nature / overlap / hills).");
         else
         {
             var seen = new HashSet<string>();
