@@ -11,13 +11,13 @@ internal enum EditTool { Point, Fill, Line, Rect, Square, Circle, Oval, Spray }
 
 internal sealed class EditorModel
 {
-    public static readonly string[] GroundNames = { "Water", "Water rock", "Grass", "Sand", "Inner cliff", "Meteorite", "Pier" };
-    public static readonly string[] NatureNames = { "Tree", "Rock", "Scorched earth", "Lava", "Flower", "Fish" };
+    public static string[] GroundNames => new[] { Tx.T("ground.0"), Tx.T("ground.1"), Tx.T("ground.2"), Tx.T("ground.3"), Tx.T("ground.4"), Tx.T("ground.5"), Tx.T("ground.6") };
+    public static string[] NatureNames => new[] { Tx.T("nature.0"), Tx.T("nature.1"), Tx.T("nature.2"), Tx.T("nature.3"), Tx.T("nature.4"), Tx.T("nature.5") };
 
     /// <summary>The game's hill pieces (InnerCliff.Key: size and kind 0 = MAIN, 1 = EXTENSION); each has its own 3D models.</summary>
-    public static readonly (int W, int H, int Kind, string Name)[] HillShapes =
+    public static (int W, int H, int Kind, string Name)[] HillShapes => new (int W, int H, int Kind, string Name)[]
     {
-        (3, 3, 0, "Hill 3x3"), (2, 2, 0, "Hill 2x2"), (2, 2, 1, "Slope 2x2"), (1, 2, 1, "Slope 1x2"), (1, 1, 1, "Slope 1x1"),
+        (3, 3, 0, Tx.T("hill.h33")), (2, 2, 0, Tx.T("hill.h22")), (2, 2, 1, Tx.T("hill.s22")), (1, 2, 1, Tx.T("hill.s12")), (1, 1, 1, Tx.T("hill.s11")),
     };
     public int HillShape;
     /// <summary>Why the last hill click did nothing (null when it worked).</summary>
@@ -364,12 +364,12 @@ internal sealed class EditorModel
         var hill = CurrentHill(x, y);
         foreach (var (fx, fy) in CliffFootprint(hill))
         {
-            if (!InBounds(fx, fy)) { HillMessage = "The hill does not fit on the island there."; return; }
+            if (!InBounds(fx, fy)) { HillMessage = Tx.T("hill.noFit"); return; }
             int g = Data.Ground[Cell(fx, fy)];
-            if (g == 0 || g == 1 || g == 6) { HillMessage = $"Hills need land: tile {fx},{fy} is {GroundNames[g].ToLowerInvariant()}."; return; }
-            if (HitBuilding(fx, fy) >= 0) { HillMessage = $"A building stands on tile {fx},{fy}."; return; }
+            if (g == 0 || g == 1 || g == 6) { HillMessage = Tx.T("hill.needLand", fx, fy, GroundNames[g].ToLowerInvariant()); return; }
+            if (HitBuilding(fx, fy) >= 0) { HillMessage = Tx.T("hill.building", fx, fy); return; }
             // the game checks nothing: two pieces on one tile would stand inside each other
-            if (HitCliff(fx, fy) >= 0) { HillMessage = $"Another hill piece covers tile {fx},{fy}."; return; }
+            if (HitCliff(fx, fy) >= 0) { HillMessage = Tx.T("hill.covered", fx, fy); return; }
         }
         PushUndo();
         Data.Cliffs.Add(hill);
@@ -509,13 +509,13 @@ internal sealed class EditorModel
             string nm = Table.NameOf(b.Type);
             foreach (var (x, y) in Footprint(b))
             {
-                if (!InBounds(x, y)) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: outside the island"); continue; }
-                if (Data.Nature[Cell(x, y)] != -1) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: nature on tile {x},{y}"); }
+                if (!InBounds(x, y)) { Problems.Add((x, y)); msgs.Add(Tx.T("check.outside", nm, b.X, b.Y)); continue; }
+                if (Data.Nature[Cell(x, y)] != -1) { Problems.Add((x, y)); msgs.Add(Tx.T("check.nature", nm, b.X, b.Y, x, y)); }
                 int g = Data.Ground[Cell(x, y)];
-                if ((g == 0 || g == 1) && b.Type != 6 && b.Type != 21 && b.Type != 22) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: water at {x},{y}"); }
-                if (g == 4) { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: on a hill at {x},{y}"); }
+                if ((g == 0 || g == 1) && b.Type != 6 && b.Type != 21 && b.Type != 22) { Problems.Add((x, y)); msgs.Add(Tx.T("check.water", nm, b.X, b.Y, x, y)); }
+                if (g == 4) { Problems.Add((x, y)); msgs.Add(Tx.T("check.onHill", nm, b.X, b.Y, x, y)); }
                 if (occ.TryGetValue((x, y), out int other) && other != i)
-                { Problems.Add((x, y)); msgs.Add($"{nm} @{b.X},{b.Y}: overlaps {Table.NameOf(Data.Buildings[other].Type)} at {x},{y}"); }
+                { Problems.Add((x, y)); msgs.Add(Tx.T("check.overlapsBuilding", nm, b.X, b.Y, Table.NameOf(Data.Buildings[other].Type), x, y)); }
                 occ[(x, y)] = i;
             }
         }
@@ -524,19 +524,19 @@ internal sealed class EditorModel
         for (int i = 0; i < Data.Cliffs.Count; i++)
         {
             var c = Data.Cliffs[i];
-            string nm = $"Hill {c.W}x{c.H}";
+            string nm = Tx.T("check.hill", c.W, c.H);
             foreach (var (x, y) in CliffFootprint(c))
             {
-                if (!InBounds(x, y)) { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: outside the island"); continue; }
+                if (!InBounds(x, y)) { Problems.Add((x, y)); msgs.Add(Tx.T("check.outside", nm, c.X, c.Y)); continue; }
                 int hg = Data.Ground[Cell(x, y)];
-                if (hg != 4) { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: tile {x},{y} is " + (hg >= 0 && hg < GroundNames.Length ? GroundNames[hg].ToLowerInvariant() : "ground " + hg) + ", not hill ground"); }
+                if (hg != 4) { Problems.Add((x, y)); msgs.Add(Tx.T("check.notHillGround", nm, c.X, c.Y, x, y, (hg >= 0 && hg < GroundNames.Length ? GroundNames[hg].ToLowerInvariant() : "#" + hg))); }
                 if (hillAt.TryGetValue((x, y), out int other) && other != i)
-                { Problems.Add((x, y)); msgs.Add($"{nm} @{c.X},{c.Y}: overlaps another hill piece at {x},{y}"); }
+                { Problems.Add((x, y)); msgs.Add(Tx.T("check.overlapHill", nm, c.X, c.Y, x, y)); }
                 hillAt[(x, y)] = i;
             }
         }
         int invisible = InvisibleHillTiles();
-        if (invisible > 0) msgs.Add($"{invisible} hill tile(s) have no hill model: they look like plain ground in the game but block building (\"Make painted hills visible\" fixes that)");
+        if (invisible > 0) msgs.Add(Tx.T("check.invisible", invisible));
         return msgs;
     }
 
@@ -562,9 +562,9 @@ internal sealed class EditorModel
     /// <summary>Counts for the status line.</summary>
     public string Summary()
     {
-        if (!HasData) return "no island loaded";
+        if (!HasData) return Tx.T("summary.none");
         int land = 0;
         foreach (int g in Data.Ground) if (g != 0 && g != 1) land++;
-        return $"{Side}x{Side}, {land} land tiles, {Data.Buildings.Count} buildings, {Data.Cliffs.Count} hill pieces";
+        return Tx.T("summary", Side, land, Data.Buildings.Count, Data.Cliffs.Count);
     }
 }

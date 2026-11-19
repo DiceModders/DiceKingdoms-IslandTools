@@ -17,8 +17,8 @@ namespace DiceModders.IslandTools;
 /// </summary>
 internal static class EditorWindow
 {
-    private static readonly string[] ToolNames = { "Point", "Fill", "Line", "Rect", "Square", "Circle", "Oval", "Spray" };
-    private static readonly string[] LayerNames = { "Ground", "Nature", "Buildings", "Hills" };
+    private static string[] ToolNames => new[] { Tx.T("tool.0"), Tx.T("tool.1"), Tx.T("tool.2"), Tx.T("tool.3"), Tx.T("tool.4"), Tx.T("tool.5"), Tx.T("tool.6"), Tx.T("tool.7") };
+    private static string[] LayerNames => new[] { Tx.T("layer.0"), Tx.T("layer.1"), Tx.T("layer.2"), Tx.T("layer.3") };
 
     private static readonly EditorModel M = new();      // the island you are editing survives closing the window and a new match
     private static bool _yUp = true;                    // draw the map like the game (Y up)
@@ -72,10 +72,10 @@ internal static class EditorWindow
         _layerBtn.Clear(); _toolBtn.Clear(); _groundBtn.Clear(); _natureBtn.Clear(); _hillBtn.Clear(); _steppers.Clear();
         _win = Windows.Ui?.Custom.Window(w =>
         {
-            w.Title("Island Editor").Size(Options.WindowWidth.Value, Options.WindowHeight.Value).Position(60f, 40f)
+            w.Title(Tx.T("editor.title")).Size(Options.WindowWidth.Value, Options.WindowHeight.Value).Position(60f, 40f)
              .Draggable().Closable().Fullscreenable().FullscreenButton();
             w.OnClose(Closed);
-            w.TitleBar?.Button("Help", HelpWindow.Toggle);
+            w.TitleBar?.Button(Tx.T("editor.help"), HelpWindow.Toggle);
             w.TitleBar?.Button("-", () => Resize(0.9f));
             w.TitleBar?.Button("+", () => Resize(1.1f));
 
@@ -85,19 +85,19 @@ internal static class EditorWindow
             // where the island comes from / goes to
             b.Row(r =>
             {
-                Btn(r, "Load MY island", () => LoadFrom(Islands.Local));
-                Btn(r, "Apply to MY island", () => ApplyTo(Islands.Local));
-                Btn(r, "New blank island", NewBlank);
-                Btn(r, "Paste code", PasteCode);
-                Btn(r, "Copy code", CopyCode);
+                Btn(r, Tx.T("editor.loadMine"), () => LoadFrom(Islands.Local));
+                Btn(r, Tx.T("editor.applyMine"), () => ApplyTo(Islands.Local));
+                Btn(r, Tx.T("editor.newBlank"), NewBlank);
+                Btn(r, Tx.T("editor.paste"), PasteCode);
+                Btn(r, Tx.T("editor.copy"), CopyCode);
             })?.Height(34f);
             b.Row(r =>
             {
                 _playerLbl = r.Text("")?.WeightW(2f);
-                Btn(r, "Players...", PlayersWindow.Toggle);
-                Btn(r, "Next player", Islands.SelectNext);
-                Btn(r, "Load SELECTED", () => LoadFrom(Islands.Selected));
-                Btn(r, "Apply to SELECTED", () => ApplyTo(Islands.Selected));
+                Btn(r, Tx.T("editor.players"), PlayersWindow.Toggle);
+                Btn(r, Tx.T("editor.nextPlayer"), Islands.SelectNext);
+                Btn(r, Tx.T("editor.loadSelected"), () => LoadFrom(Islands.Selected));
+                Btn(r, Tx.T("editor.applySelected"), () => ApplyTo(Islands.Selected));
             })?.Height(34f);
 
             // tools on the left, the map on the right
@@ -107,7 +107,7 @@ internal static class EditorWindow
                 _left = main.Scroll(BuildLeftPanel)?.FixedW(LeftWidth()).FillHeight();
                 main.Column(col =>
                 {
-                    _noData = col.Paragraph("No island loaded.\nUse \"Load MY island\" during a match, \"Paste code\", or \"New blank island\".");
+                    _noData = col.Paragraph(Tx.T("editor.noData"));
                     _map = col.Image((Texture)null)?.KeepAspect(false).FillWidth().FillHeight();
                     _map?.OnPointer(OnPointer);
                     _map?.OnScroll(n => Run(() => { MapView.Zoom(n, _pointerAt); _texDirty = true; }));
@@ -118,23 +118,23 @@ internal static class EditorWindow
             // global actions
             b.Row(r =>
             {
-                Btn(r, "Undo", () => { if (M.CanUndo) { M.Undo(); AfterEdit(true); } });
-                Btn(r, "Redo", () => { if (M.CanRedo) { M.Redo(); AfterEdit(true); } });
-                Btn(r, "Check buildings", RunCheck);
-                Btn(r, "Clear bldg nature", () => { M.ClearNatureUnderBuildings(); SetStatus("Nature under buildings removed."); AfterEdit(true); });
-                Btn(r, "All HP default", () => { M.SetAllHpToDefault(); SetStatus("Every building now has its type's default HP."); AfterEdit(false); });
+                Btn(r, Tx.T("editor.undo"), () => { if (M.CanUndo) { M.Undo(); AfterEdit(true); } });
+                Btn(r, Tx.T("editor.redo"), () => { if (M.CanRedo) { M.Redo(); AfterEdit(true); } });
+                Btn(r, Tx.T("editor.check"), RunCheck);
+                Btn(r, Tx.T("editor.clearNature"), () => { M.ClearNatureUnderBuildings(); SetStatus(Tx.T("editor.natureCleared")); AfterEdit(true); });
+                Btn(r, Tx.T("editor.hpDefault"), () => { M.SetAllHpToDefault(); SetStatus(Tx.T("editor.hpDone")); AfterEdit(false); });
             })?.Height(34f);
             b.Row(r =>
             {
-                Btn(r, "Coast: Outline", () => { M.Morph("outline"); AfterEdit(true); });
-                Btn(r, "Coast: Grow", () => { M.Morph("grow"); AfterEdit(true); });
-                Btn(r, "Coast: Shrink", () => { M.Morph("shrink"); AfterEdit(true); });
-                Btn(r, "Fit map", () => { MapView.Fit(); _texDirty = true; });
-                _yUpTog = r.Toggle("Game orientation (Y up)", _yUp, v => Changed(() => { _yUp = v; AfterEdit(true); }))?.WeightW(2f);
+                Btn(r, Tx.T("editor.coastOutline"), () => { M.Morph("outline"); AfterEdit(true); });
+                Btn(r, Tx.T("editor.coastGrow"), () => { M.Morph("grow"); AfterEdit(true); });
+                Btn(r, Tx.T("editor.coastShrink"), () => { M.Morph("shrink"); AfterEdit(true); });
+                Btn(r, Tx.T("editor.fit"), () => { MapView.Fit(); _texDirty = true; });
+                _yUpTog = r.Toggle(Tx.T("editor.yUp"), _yUp, v => Changed(() => { _yUp = v; AfterEdit(true); }))?.WeightW(2f);
             })?.Height(34f);
 
             // status
-            _status = b.Text("Load your island, paste a code or start a blank island.");
+            _status = b.Text(Tx.T("editor.start"));
             _hover = b.Text("")?.Color(new Color(0.75f, 0.8f, 0.9f, 1f));
             _checks = b.Paragraph("")?.Color(new Color(1f, 0.55f, 0.5f, 1f));     // wraps, grows with the problem list (max 4 lines)
         });
@@ -182,7 +182,7 @@ internal static class EditorWindow
         _win.Size(w, h);
         _win.Position(at.x, -at.y);
         _left?.FixedW(LeftWidth());
-        SetStatus($"Window size {w} x {h}.");
+        SetStatus(Tx.T("editor.windowSize", w, h));
     }
 
     /// <summary>A row "text  [-] value [+]".</summary>
@@ -219,27 +219,27 @@ internal static class EditorWindow
             p.Spacing(4f);
             Pairs(p, ToolNames, _toolBtn, i => { M.Tool = (EditTool)i; _uiDirty = true; });
 
-            p.Text("Brush:");
+            p.Text(Tx.T("editor.brush"));
             _groundGroup = p.Column(g => { g.Spacing(4f); Pairs(g, EditorModel.GroundNames, _groundBtn, i => { M.GroundBrush = i; _uiDirty = true; }); });
             _natureGroup = p.Column(g =>
             {
                 g.Spacing(4f);
-                var names = new List<string> { "Erase" };
+                var names = new List<string> { Tx.T("editor.erase") };
                 names.AddRange(EditorModel.NatureNames);
                 Pairs(g, names.ToArray(), _natureBtn, i => { M.NatureBrush = i - 1; _uiDirty = true; });
             });
 
-            Stepper(p, "Brush size", () => M.BrushSize, v => M.BrushSize = v, 1, 9, 1);
+            Stepper(p, Tx.T("editor.brushSize"), () => M.BrushSize, v => M.BrushSize = v, 1, 9, 1);
 
-            _symX = p.Toggle("Symmetry left-right", M.SymX, v => Changed(() => M.SymX = v));
-            _symY = p.Toggle("Symmetry top-bottom", M.SymY, v => Changed(() => M.SymY = v));
-            _fill = p.Toggle("Filled shapes (off = outline)", M.FillShapes, v => Changed(() => M.FillShapes = v));
+            _symX = p.Toggle(Tx.T("editor.symX"), M.SymX, v => Changed(() => M.SymX = v));
+            _symY = p.Toggle(Tx.T("editor.symY"), M.SymY, v => Changed(() => M.SymY = v));
+            _fill = p.Toggle(Tx.T("editor.filled"), M.FillShapes, v => Changed(() => M.FillShapes = v));
 
             _sprayGroup = p.Column(s =>
             {
                 s.Spacing(4f);
-                Stepper(s, "Spray radius", () => M.SprayRadius, v => M.SprayRadius = v, 1, 15, 1);
-                Stepper(s, "Spray density %", () => M.SprayDensity, v => M.SprayDensity = v, 5, 100, 5);
+                Stepper(s, Tx.T("editor.sprayRadius"), () => M.SprayRadius, v => M.SprayRadius = v, 1, 15, 1);
+                Stepper(s, Tx.T("editor.sprayDensity"), () => M.SprayDensity, v => M.SprayDensity = v, 5, 100, 5);
             });
         });
 
@@ -247,7 +247,7 @@ internal static class EditorWindow
         _buildGroup = c.Column(g =>
         {
             g.Spacing(4f);
-            g.Paragraph("Click an empty tile to place, click a building tile to remove it.");
+            g.Paragraph(Tx.T("editor.bldgHelp"));
             g.Row(r =>
             {
                 r.Button("<", () => Run(() => CycleBuilding(-1)))?.FixedW(44f);
@@ -257,36 +257,36 @@ internal static class EditorWindow
             _bInfo = g.Text("");
             g.Row(r =>
             {
-                _rotateBtn = Btn(r, "Rotate", () => { M.BOrient = (M.BOrient + 1) % 4; _hoverKey = ""; _uiDirty = true; });
-                _mirrorTog = r.Toggle("Mirrored", M.BMirror, v => Changed(() => { M.BMirror = v; _hoverKey = ""; _uiDirty = true; }))?.FillWidth();
+                _rotateBtn = Btn(r, Tx.T("editor.rotate"), () => { M.BOrient = (M.BOrient + 1) % 4; _hoverKey = ""; _uiDirty = true; });
+                _mirrorTog = r.Toggle(Tx.T("editor.mirrored"), M.BMirror, v => Changed(() => { M.BMirror = v; _hoverKey = ""; _uiDirty = true; }))?.FillWidth();
             })?.Height(32f);
-            Stepper(g, "HP (0 = default)", () => M.BHealth, v => M.BHealth = v, 0, 1000, 5);
-            g.Paragraph("Yellow preview = where it goes. Right-click removes. The white dot is the anchor tile.");
+            Stepper(g, Tx.T("editor.hp"), () => M.BHealth, v => M.BHealth = v, 0, 1000, 5);
+            g.Paragraph(Tx.T("editor.bldgPreview"));
         });
 
         // ---- hills (the game's inner cliffs)
         _hillGroup = c.Column(g =>
         {
             g.Spacing(4f);
-            g.Paragraph("Click to place a hill piece, click a hill to remove it.");
+            g.Paragraph(Tx.T("editor.hillHelp"));
             var names = new string[EditorModel.HillShapes.Length];
             for (int i = 0; i < names.Length; i++) names[i] = EditorModel.HillShapes[i].Name;
             Pairs(g, names, _hillBtn, i => { M.HillShape = i; _hoverKey = ""; _uiDirty = true; });
             g.Row(r =>
             {
-                _hillRotateBtn = Btn(r, "Rotate", () => { M.BOrient = (M.BOrient + 1) % 4; _hoverKey = ""; _uiDirty = true; });
-                _hillMirrorTog = r.Toggle("Mirrored", M.BMirror, v => Changed(() => { M.BMirror = v; _hoverKey = ""; _uiDirty = true; }))?.FillWidth();
+                _hillRotateBtn = Btn(r, Tx.T("editor.rotate"), () => { M.BOrient = (M.BOrient + 1) % 4; _hoverKey = ""; _uiDirty = true; });
+                _hillMirrorTog = r.Toggle(Tx.T("editor.mirrored"), M.BMirror, v => Changed(() => { M.BMirror = v; _hoverKey = ""; _uiDirty = true; }))?.FillWidth();
             })?.Height(32f);
-            g.Row(r => Btn(r, "Make painted hills visible", MakeHillsVisible))?.Height(32f);
-            g.Paragraph("Hills painted with the Ground brush \"Inner cliff\" are invisible in the game but still block building. " +
-                        "The button covers them with the game's hill pieces, big ones first; leave them painted for an invisible hill.");
+            g.Row(r => Btn(r, Tx.T("editor.hillsVisible"), MakeHillsVisible))?.Height(32f);
+            g.Paragraph(Tx.T("editor.hillsInfo") +
+                        "");
         });
     }
 
     private static void MakeHillsVisible()
     {
         int added = M.MakeHillsVisible();
-        SetStatus(added > 0 ? $"{added} hill piece(s) added over the painted hill tiles." : "No painted hill tiles without a piece.");
+        SetStatus(added > 0 ? Tx.T("editor.hillsAdded", added) : Tx.T("editor.hillsNone"));
         AfterEdit(true);
     }
 
@@ -349,9 +349,9 @@ internal static class EditorWindow
                 M.Table = table;
                 if (M.Table.Get(M.BType) == null) foreach (var k in M.Table.ById.Keys) { M.BType = k; break; }
             }
-            string title = "Island Editor" + (M.Dirty ? " *" : "");
+            string title = Tx.T("editor.title") + (M.Dirty ? " *" : "");
             if (title != _titleShown) { _titleShown = title; _win.Title(title); }
-            if (_playerLbl != null) _playerLbl.Value = "Selected player: " + (Islands.Selected?.Name ?? "(press Next player)");
+            if (_playerLbl != null) _playerLbl.Value = Tx.T("editor.selected", Islands.Selected?.Name ?? Tx.T("editor.pressNext"));
 
             bool paint = M.Layer == EditLayer.Ground || M.Layer == EditLayer.Nature;
             Show(_paintGroup, paint);
@@ -374,10 +374,10 @@ internal static class EditorWindow
 
             var info = M.Table.Get(M.BType);
             if (_bName != null) _bName.Value = M.BType + ": " + M.Table.NameOf(M.BType);
-            if (_bInfo != null) _bInfo.Value = info == null ? "(unknown type)" : $"tier {info.Tier}, HP {info.Hp}, {info.Shape.Length} tiles";
-            _rotateBtn?.Text("Rotate (" + (((M.BOrient % 4) + 4) % 4) + ")");
+            if (_bInfo != null) _bInfo.Value = info == null ? Tx.T("editor.unknownType") : Tx.T("editor.bInfo", info.Tier, info.Hp, info.Shape.Length);
+            _rotateBtn?.Text(Tx.T("editor.rotateN", ((M.BOrient % 4) + 4) % 4));
             _mirrorTog?.Set(M.BMirror);
-            _hillRotateBtn?.Text("Rotate (" + (((M.BOrient % 4) + 4) % 4) + ")");
+            _hillRotateBtn?.Text(Tx.T("editor.rotateN", ((M.BOrient % 4) + 4) % 4));
             _hillMirrorTog?.Set(M.BMirror);
 
             if (_checks != null) _checks.Value = string.Join("\n", _checkLines);
@@ -544,18 +544,18 @@ internal static class EditorWindow
     {
         if (!M.InBounds(x, y)) return "";
         int g = M.Data.Ground[M.Cell(x, y)], n = M.Data.Nature[M.Cell(x, y)];
-        var sb = new StringBuilder($"tile {x},{y}: {(g >= 0 && g < EditorModel.GroundNames.Length ? EditorModel.GroundNames[g] : "ground " + g)}");
-        if (n != -1) sb.Append(", ").Append(n >= 0 && n < EditorModel.NatureNames.Length ? EditorModel.NatureNames[n] : "nature " + n);
+        var sb = new StringBuilder(Tx.T("tile.info", x, y, (g >= 0 && g < EditorModel.GroundNames.Length ? EditorModel.GroundNames[g] : "#" + g)));
+        if (n != -1) sb.Append(", ").Append(n >= 0 && n < EditorModel.NatureNames.Length ? EditorModel.NatureNames[n] : "#" + n);
         if (g == 4)
         {
             int hi = M.HitCliff(x, y);
-            if (hi < 0) sb.Append(" (invisible: no hill piece)");
+            if (hi < 0) sb.Append(" (" + Tx.T("tile.invisible") + ")");
             else
             {
                 var h = M.Data.Cliffs[hi];
-                string shape = "hill piece";
+                string shape = Tx.T("tile.hillPiece");
                 foreach (var s in EditorModel.HillShapes) if (s.W == h.W && s.H == h.H && s.Kind == h.Kind) shape = s.Name;
-                sb.Append($", {shape} at {h.X},{h.Y} (orient {h.Orient}{(h.Mirror != 0 ? ", mirrored" : "")})");
+                sb.Append(Tx.T("tile.hill", shape, h.X, h.Y, h.Orient, h.Mirror != 0 ? Tx.T("tile.mirrored") : ""));
             }
         }
         int bi = M.HitBuilding(x, y);
@@ -573,14 +573,14 @@ internal static class EditorWindow
     {
         var msgs = M.Check();
         _checkLines.Clear();
-        if (msgs.Count == 0) _checkLines.Add("No problems found (bounds / water / nature / overlap / hills).");
+        if (msgs.Count == 0) _checkLines.Add(Tx.T("editor.checkOk"));
         else
         {
             var seen = new HashSet<string>();
             foreach (var s in msgs) if (seen.Add(s)) _checkLines.Add(s);
-            if (_checkLines.Count > 3) { int more = _checkLines.Count - 3; _checkLines.RemoveRange(3, more); _checkLines.Add("... and " + more + " more (red frames on the map)"); }
+            if (_checkLines.Count > 3) { int more = _checkLines.Count - 3; _checkLines.RemoveRange(3, more); _checkLines.Add(Tx.T("check.more", more)); }
         }
-        SetStatus(msgs.Count == 0 ? "Check done: all good." : "Check done: " + msgs.Count + " problem(s) - see the red frames.");
+        SetStatus(msgs.Count == 0 ? Tx.T("editor.checkGood") : Tx.T("editor.checkBad", msgs.Count));
         _texDirty = true; _uiDirty = true;
     }
 
@@ -589,17 +589,17 @@ internal static class EditorWindow
         int mine = Islands.SideOf(Islands.Local);
         M.NewBlank(mine > 0 ? mine : M.HasData ? M.Side : 49);
         _checkLines.Clear();
-        SetStatus("Blank island (all water). Paint some land first.");
+        SetStatus(Tx.T("editor.blank"));
         _texDirty = true; _uiDirty = true;
     }
 
     /// <summary>Reads the player's island into the editor.</summary>
     internal static void LoadFrom(MatchPlayer player)
     {
-        if (player == null) { SetStatus("No such player - join or start a match first (for another player: press Next player)."); Flush(); return; }
+        if (player == null) { SetStatus(Tx.T("editor.noPlayer")); Flush(); return; }
         byte[] bytes = Islands.Export(player);
-        if (bytes == null || bytes.Length == 0) { SetStatus("That player has no island yet."); Flush(); return; }
-        Load(bytes, false, $"Loaded {player.Name}'s island");
+        if (bytes == null || bytes.Length == 0) { SetStatus(Tx.T("editor.noIsland")); Flush(); return; }
+        Load(bytes, false, Tx.T("editor.loaded", player.Name));
         Flush();
     }
 
@@ -608,7 +608,7 @@ internal static class EditorWindow
         try
         {
             var d = IslandCodec.FromCodeBytes(code);
-            if (!d.SideIsExact) { SetStatus("The island has an unexpected layout (its tile arrays do not form a square) - not loaded."); return false; }
+            if (!d.SideIsExact) { SetStatus(Tx.T("editor.badLayout")); return false; }
             M.Load(d);
             M.Dirty = dirty;
             if (d.Cliffs.Count > 0)
@@ -618,17 +618,17 @@ internal static class EditorWindow
                 Plugin.L.LogInfo("[editor] hill pieces: " + string.Join(", ", System.Linq.Enumerable.Select(kinds, p => $"{p.Key} x{p.Value}")));
             }
             _checkLines.Clear();
-            SetStatus($"{what}: {M.Summary()}" + (d.TrailingBytes > 0 ? $" (note: {d.TrailingBytes} unread byte(s))" : "") + ".");
+            SetStatus($"{what}: {M.Summary()}" + (d.TrailingBytes > 0 ? Tx.T("summary.unread", d.TrailingBytes) : "") + ".");
             _texDirty = true; _uiDirty = true;
             return true;
         }
-        catch (Exception e) { SetStatus("That is not a valid island code: " + e.Message); return false; }
+        catch (Exception e) { SetStatus(Tx.T("editor.badCode", e.Message)); return false; }
     }
 
     private static void ApplyTo(MatchPlayer player)
     {
-        if (!M.HasData) { SetStatus("Nothing to apply - load or create an island first."); return; }
-        if (player == null) { SetStatus("No such player - join or start a match first (for another player: press Next player)."); return; }
+        if (!M.HasData) { SetStatus(Tx.T("editor.nothingToApply")); return; }
+        if (player == null) { SetStatus(Tx.T("editor.noPlayer")); return; }
         int problems = M.Check().Count;
         bool ok = Islands.Import(player, IslandCodec.ToCodeBytes(M.Data), out string message);
         if (ok) M.Dirty = false;
@@ -640,13 +640,13 @@ internal static class EditorWindow
     {
         var bytes = Clipboard.ReadIslandCode(out string error);
         if (bytes == null) { SetStatus(error); return; }
-        Load(bytes, true, "Loaded the code from the clipboard");
+        Load(bytes, true, Tx.T("editor.pasted"));
     }
 
     private static void CopyCode()
     {
-        if (!M.HasData) { SetStatus("Nothing to copy - load or create an island first."); return; }
+        if (!M.HasData) { SetStatus(Tx.T("editor.nothingToCopy")); return; }
         string code = Convert.ToBase64String(IslandCodec.ToCodeBytes(M.Data));
-        SetStatus(Clipboard.SetText(code) ? $"Island code copied ({code.Length} characters)." : "Could not write to the clipboard.");
+        SetStatus(Clipboard.SetText(code) ? Tx.T("editor.copied", code.Length) : Tx.T("clipboard.failed"));
     }
 }

@@ -17,7 +17,8 @@ internal static class Windows
     internal static void Install(UiScope ui)
     {
         Ui = ui;
-        ui?.WhenReady(s => { _button = s.Native.TopBar.AddIconButton("hammer", "Island Editor", EditorWindow.Toggle, -100); Refresh(); });
+        ui?.WhenReady(s => { _button = s.Native.TopBar.AddIconButton("hammer", Tx.T("editor.title"), EditorWindow.Toggle, -100); Refresh(); });
+        DiceModders.ModCore.ModCore.Texts.LanguageChanged += () => _button?.SetTooltip(Tx.T("editor.title"));   // the tooltip in the new language
         Core.Match.Started += Refresh;
         Core.Match.Ended += Refresh;
         Options.ShowButton.SettingChanged += (_, _) => Refresh();

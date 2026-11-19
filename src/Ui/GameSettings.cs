@@ -9,19 +9,19 @@ internal static class GameSettings
 {
     internal static void Install(UiScope ui)
     {
-        ui?.Native.Settings.AddBlock(new SettingsBlockSpec
+        Tx.Block(ui, () => new SettingsBlockSpec
         {
             Id = Plugin.Guid + ".settings",
             Page = SettingsPage.Game,
-            Title = "Island Tools",
+            Title = Tx.T("settings.title"),
             Order = 20,
             Build = block =>
             {
-                block.AddButtons("Windows", ("Editor", EditorWindow.Toggle), ("Players", PlayersWindow.Toggle), ("Tutorial", HelpWindow.Toggle));
-                Toggle(block, "Top bar button", Options.ShowButton);
-                Toggle(block, "Top bar button outside matches", Options.ButtonAlways);
-                Toggle(block, "Allow every placement while applying", Options.BypassPlacement);
-                block.AddInfo("Without it the game stops applying an island at the first building it thinks does not fit.");
+                block.AddButtons(Tx.T("settings.windows"), (Tx.T("settings.editor"), EditorWindow.Toggle), (Tx.T("settings.players"), PlayersWindow.Toggle), (Tx.T("settings.tutorial"), HelpWindow.Toggle));
+                Toggle(block, Tx.T("settings.button"), Options.ShowButton);
+                Toggle(block, Tx.T("settings.buttonAlways"), Options.ButtonAlways);
+                Toggle(block, Tx.T("settings.bypass"), Options.BypassPlacement);
+                block.AddInfo(Tx.T("settings.bypassInfo"));
             },
         });
     }

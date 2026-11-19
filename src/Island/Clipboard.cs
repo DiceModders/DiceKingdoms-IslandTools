@@ -36,8 +36,8 @@ internal static class Clipboard
     public static byte[] ReadIslandCode(out string error)
     {
         error = null;
-        if (!TryGetText(out string text)) { error = "The clipboard has no text."; return null; }
-        if (!TryDecodeBase64(text, out byte[] bytes)) { error = "The clipboard text is not an island code."; return null; }
+        if (!TryGetText(out string text)) { error = Tx.T("clipboard.noText"); return null; }
+        if (!TryDecodeBase64(text, out byte[] bytes)) { error = Tx.T("clipboard.notCode"); return null; }
         return bytes;
     }
 }

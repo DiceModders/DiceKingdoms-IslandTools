@@ -82,7 +82,7 @@ internal static class Islands
     internal static bool Import(MatchPlayer p, byte[] code, out string message)
     {
         var grid = GridOf(p);
-        if (grid == null) { message = "That player has no island yet (join or start a match first)."; return false; }
+        if (grid == null) { message = Tx.T("apply.noIsland"); return false; }
         string fitted = Fit(ref code, SideOf(p));
         var backup = Export(p);   // the game changes the island while it reads the code: put this back if it stops halfway
         ImportGuard.Begin();
@@ -90,7 +90,7 @@ internal static class Islands
         {
             RemoveHills(grid);
             grid.ImportIsland(new Il2CppStructArray<byte>(code));
-            message = "Applied to " + p.Name + "'s island" + fitted + ImportGuard.Note() + ".";
+            message = Tx.T("apply.done", p.Name) + fitted + ImportGuard.Note() + ".";
             return true;
         }
         catch (Exception e)
@@ -98,11 +98,11 @@ internal static class Islands
             string first = (e.Message ?? "").Split('\n')[0].Trim();
             Plugin.L.LogError("[island] import: " + e.GetType().Name + ": " + first);
             bool restored = Restore(grid, backup);
-            string after = restored ? " The island was put back as it was." : " The island may be half-loaded.";
+            string after = " " + (restored ? Tx.T("apply.restored") : Tx.T("apply.half"));
             message = (e.Message ?? "").Contains("CanPlaceBuilding")
-                ? "The game refused a building (see the [import] line in the log)." + after +
-                  " Fix that building, or switch \"Allow every placement while applying\" on."
-                : "The game rejected the island: " + first + "." + after;
+                ? Tx.T("apply.refused") + after +
+                  " " + Tx.T("apply.fixHint")
+                : Tx.T("apply.rejected", first) + after;
             return false;
         }
         finally
@@ -158,15 +158,15 @@ internal static class Islands
         // a hill piece the game has no model for stops ImportIsland halfway (KeyNotFound in DefaultPrefabs.InnerCliff): leave such pieces out
         int unknown = data.Cliffs.RemoveAll(c => !KnownHill(c));
         if (unknown > 0) Plugin.L.LogWarning($"[island] {unknown} hill piece(s) of a kind the game does not have were left out");
-        string note = unknown > 0 ? $" ({unknown} unknown hill piece(s) left out)" : "";
+        string note = unknown > 0 ? Tx.T("fit.unknownHills", unknown) : "";
         if (data.Side == side)
         {
             if (unknown > 0) code = IslandCodec.ToCodeBytes(data);
             return note;
         }
         code = IslandCodec.ToCodeBytes(data.Fitted(side, out int dropped));
-        return note + $" (the {data.Side}x{data.Side} island was placed in the middle of the {side}x{side} grid" +
-               (dropped > 0 ? $"; {dropped} building(s)/cliff(s) outside it were left out" : "") + ")";
+        return note + Tx.T("fit.placed", data.Side, side) +
+               (dropped > 0 ? Tx.T("fit.dropped", dropped) : "") + ")";
     }
 
     /// <summary>The hill pieces the game has models for (InnerCliff.Key: kind, width, height).</summary>

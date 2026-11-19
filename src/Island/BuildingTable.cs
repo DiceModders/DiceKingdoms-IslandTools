@@ -10,7 +10,9 @@ namespace DiceModders.IslandTools;
 internal sealed class BuildingInfo
 {
     public int Id;
-    public string Name;
+    public string RawName;
+    /// <summary>The game's own name in the current language (building.&lt;TYPE&gt;.name), else the listed English name.</summary>
+    public string Name => DiceModders.IslandTools.GameNames.Building(RawName);
     public int Tier, Hp;
     public int[][] Shape;      // list of {dx, dy}
 }
@@ -55,7 +57,7 @@ internal sealed class BuildingTable
             foreach (Match p in Pair.Matches(shapeText))
                 cells.Add(new[] { int.Parse(p.Groups[1].Value), int.Parse(p.Groups[2].Value) });
             if (cells.Count == 0) continue;
-            t.ById[id] = new BuildingInfo { Id = id, Name = name, Tier = tier, Hp = hp, Shape = cells.ToArray() };
+            t.ById[id] = new BuildingInfo { Id = id, RawName = name, Tier = tier, Hp = hp, Shape = cells.ToArray() };
         }
         return t;
     }

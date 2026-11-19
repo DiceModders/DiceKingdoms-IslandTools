@@ -40,7 +40,7 @@ internal static class ImportGuard
                          $"{Environment.TickCount64 - _started} ms");
     }
 
-    internal static string Note() => _allowed > 0 ? $" ({_allowed} refused placement(s) allowed)" : "";
+    internal static string Note() => _allowed > 0 ? " (" + Tx.T("apply.allowed", _allowed) + ")" : "";
 
     internal static void CanPlacePostfix(GameBuilding __0, ref bool __result)
     {
