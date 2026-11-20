@@ -21,7 +21,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Guid = "org.dicemodders.dicekingdoms.islandtools";
     public const string Name = "DiceKingdoms Island Tools";
-    public const string Version = "3.0.0";
+    public const string Version = "1.0.0";
 
     internal static ManualLogSource L;
     /// <summary>The mod's own switch ([General] Enabled); while off the game behaves as without the mod.</summary>
