@@ -83,6 +83,7 @@ internal static class Islands
     {
         var grid = GridOf(p);
         if (grid == null) { message = Tx.T("apply.noIsland"); return false; }
+        Buildings.Refresh();
         string fitted = Fit(ref code, SideOf(p));
         var backup = Export(p);   // the game changes the island while it reads the code: put this back if it stops halfway
         ImportGuard.Begin();
@@ -159,9 +160,21 @@ internal static class Islands
         int unknown = data.Cliffs.RemoveAll(c => !KnownHill(c));
         if (unknown > 0) Plugin.L.LogWarning($"[island] {unknown} hill piece(s) of a kind the game does not have were left out");
         string note = unknown > 0 ? Tx.T("fit.unknownHills", unknown) : "";
+
+        // a building of a type this game does not have (made with a mod's building, such as the Casino, that is not installed here) stops
+        // ImportIsland halfway too (the type is read as a place in the game's list): leave such buildings and their remains out
+        var table = Buildings.Table;
+        int unknownBuildings = data.Buildings.RemoveAll(b => table.Get(b.Type) == null) + data.Remains.RemoveAll(b => table.Get(b.Type) == null);
+        if (unknownBuildings > 0)
+        {
+            Plugin.L.LogWarning($"[island] {unknownBuildings} building(s) of a type the game does not have (a mod's building?) were left out");
+            note += Tx.T("fit.unknownBuildings", unknownBuildings);
+        }
+        bool changed = unknown > 0 || unknownBuildings > 0;
+
         if (data.Side == side)
         {
-            if (unknown > 0) code = IslandCodec.ToCodeBytes(data);
+            if (changed) code = IslandCodec.ToCodeBytes(data);
             return note;
         }
         code = IslandCodec.ToCodeBytes(data.Fitted(side, out int dropped));

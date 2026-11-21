@@ -5,7 +5,7 @@
     <AssemblyName>DiceModders.IslandTools</AssemblyName>
     <RootNamespace>DiceModders.IslandTools</RootNamespace>
     <Description>In-game island editor and players window for Dice Kingdoms.</Description>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>DiceModders</Authors>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>

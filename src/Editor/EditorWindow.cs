@@ -69,6 +69,7 @@ internal static class EditorWindow
     internal static void Open()
     {
         if (IsOpen) { _win.BringToFront(); return; }
+        Buildings.Refresh();   // buildings a mod added after the first read (the Casino) show up in the list
         _layerBtn.Clear(); _toolBtn.Clear(); _groundBtn.Clear(); _natureBtn.Clear(); _hillBtn.Clear(); _steppers.Clear();
         _win = Windows.Ui?.Custom.Window(w =>
         {
@@ -629,7 +630,7 @@ internal static class EditorWindow
     {
         if (!M.HasData) { SetStatus(Tx.T("editor.nothingToApply")); return; }
         if (player == null) { SetStatus(Tx.T("editor.noPlayer")); return; }
-        int problems = M.Check().Count;
+        int problems = M.Check().Count - M.Notes;
         bool ok = Islands.Import(player, IslandCodec.ToCodeBytes(M.Data), out string message);
         if (ok) M.Dirty = false;
         SetStatus(message + (ok && problems > 0 ? $" {problems} placement problem(s) were present." : ""));

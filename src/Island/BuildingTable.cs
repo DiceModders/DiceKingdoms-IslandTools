@@ -15,6 +15,8 @@ internal sealed class BuildingInfo
     public string Name => DiceModders.IslandTools.GameNames.Building(RawName);
     public int Tier, Hp;
     public int[][] Shape;      // list of {dx, dy}
+    /// <summary>Added to the game's list by a mod (not one of the game's own BuildingTypeName values): a game without that mod cannot read it.</summary>
+    public bool FromMod;
 }
 
 internal sealed class BuildingTable

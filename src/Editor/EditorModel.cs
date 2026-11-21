@@ -496,10 +496,14 @@ internal sealed class EditorModel
         return -1;
     }
 
+    /// <summary>How many of the last <see cref="Check"/> messages are notes (a mod's building), not placement problems.</summary>
+    public int Notes;
+
     /// <summary>Water / nature / overlap / bounds check (same rules as the web editor). Fills Problems; returns messages.</summary>
     public List<string> Check()
     {
         Problems.Clear();
+        Notes = 0;
         var msgs = new List<string>();
         if (!HasData) return msgs;
         var occ = new Dictionary<(int, int), int>();
@@ -519,6 +523,14 @@ internal sealed class EditorModel
                 occ[(x, y)] = i;
             }
         }
+        // buildings a mod adds (the Casino): this game reads them, a game without that mod leaves them out when the code is applied;
+        // types this game does not have at all (a mod that is not installed here) are left out here too
+        var byType = new SortedDictionary<int, int>();
+        foreach (var b in Data.Buildings)
+            if (Table.Get(b.Type) is not BuildingInfo known || known.FromMod) byType[b.Type] = byType.TryGetValue(b.Type, out int n) ? n + 1 : 1;
+        foreach (var (type, count) in byType)
+            msgs.Add(Table.Get(type) != null ? Tx.T("check.modBuilding", Table.NameOf(type), count) : Tx.T("check.unknownBuilding", type, count));
+        Notes = byType.Count;   // notes, not placement problems
         // hill pieces: the game draws them wherever they are, so these show up as hills on water, on grass, or inside each other
         var hillAt = new Dictionary<(int, int), int>();
         for (int i = 0; i < Data.Cliffs.Count; i++)
