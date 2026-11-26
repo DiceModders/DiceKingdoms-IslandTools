@@ -581,7 +581,8 @@ internal static class EditorWindow
             foreach (var s in msgs) if (seen.Add(s)) _checkLines.Add(s);
             if (_checkLines.Count > 3) { int more = _checkLines.Count - 3; _checkLines.RemoveRange(3, more); _checkLines.Add(Tx.T("check.more", more)); }
         }
-        SetStatus(msgs.Count == 0 ? Tx.T("editor.checkGood") : Tx.T("editor.checkBad", msgs.Count));
+        int problems = msgs.Count - M.Notes;   // notes (a building of a mod the others may lack) are not problems
+        SetStatus(problems <= 0 ? Tx.T("editor.checkGood") : Tx.T("editor.checkBad", problems));
         _texDirty = true; _uiDirty = true;
     }
 
